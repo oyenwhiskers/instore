@@ -22,7 +22,7 @@
     </div>
     <div class="card">
         <div class="stat-label">Premiums</div>
-        <div class="stat-value">T1 {{ $premiumTier1 }} / T2 {{ $premiumTier2 }}</div>
+        <div class="stat-value">{{ $premiumTotal }}</div>
     </div>
 </div>
 

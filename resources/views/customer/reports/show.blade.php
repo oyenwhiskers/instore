@@ -39,18 +39,18 @@
             <div class="card">
                 <div class="stat-label">Premium Redemptions</div>
                 <ul class="text-sm">
-                    @php
-                        $tier1 = $report->premiums->where('tier', 1)->sum('quantity');
-                        $tier2 = $report->premiums->where('tier', 2)->sum('quantity');
-                    @endphp
-                    <li class="form-grid" style="grid-template-columns: 1fr auto;">
-                        <span>Tier 1</span>
-                        <span>{{ $tier1 }}</span>
-                    </li>
-                    <li class="form-grid" style="grid-template-columns: 1fr auto;">
-                        <span>Tier 2</span>
-                        <span>{{ $tier2 }}</span>
-                    </li>
+                    @forelse ($report->premiums->groupBy('premium_id') as $premiumId => $items)
+                        @php
+                            $premiumName = $items->first()?->premium?->gift_name ?? 'Premium';
+                            $premiumQty = $items->sum('quantity');
+                        @endphp
+                        <li class="form-grid" style="grid-template-columns: 1fr auto;">
+                            <span>{{ $premiumName }}</span>
+                            <span>{{ $premiumQty }}</span>
+                        </li>
+                    @empty
+                        <li class="muted">No premiums redeemed.</li>
+                    @endforelse
                 </ul>
             </div>
         </div>

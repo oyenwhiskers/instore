@@ -1,80 +1,103 @@
 @extends('layouts.app')
 
-@section('page_title', 'Hourly Reports')
-@section('page_desc', 'Filter by date, location, and promoter for audit-ready tracking.')
+@section('page_title', 'Event Reports')
+@section('page_desc', 'Sales summaries by event with quick access to full performance details.')
 
 @section('content')
-<div class="card">
-    <form method="GET" class="form-section">
-        <div class="stat-label">Filters</div>
-        <div class="form-grid">
-            <div class="form-group">
-                <label>Date</label>
-                <input type="date" name="date" value="{{ request('date') }}" class="input">
-            </div>
-            <div class="form-group">
-                <label>Location</label>
-                <select name="location_id" class="select">
-                    <option value="">All</option>
-                    @foreach ($locations as $location)
-                        <option value="{{ $location->id }}" @selected(request('location_id') == $location->id)>{{ $location->name }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Promoter</label>
-                <select name="promoter_user_id" class="select">
-                    <option value="">All</option>
-                    @foreach ($promoters as $promoter)
-                        <option value="{{ $promoter->id }}" @selected(request('promoter_user_id') == $promoter->id)>{{ $promoter->name }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div class="form-group" style="align-self: end;">
-                <button class="btn btn-primary" type="submit">Apply Filters</button>
-            </div>
+<div class="card" style="margin-bottom: 16px;">
+    <div class="form-section" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;">
+        <div class="stat-label">Event Status</div>
+        <div class="tab-row" role="tablist" style="gap: 8px; flex-wrap: wrap;">
+            <a class="tab-button {{ $status === 'active' ? 'is-active' : '' }}" href="{{ route('management.reports.index', ['status' => 'active']) }}">Active <span class="tab-badge">{{ $statusCounts['active'] }}</span></a>
+            <a class="tab-button {{ $status === 'upcoming' ? 'is-active' : '' }}" href="{{ route('management.reports.index', ['status' => 'upcoming']) }}">Upcoming <span class="tab-badge">{{ $statusCounts['upcoming'] }}</span></a>
+            <a class="tab-button {{ $status === 'completed' ? 'is-active' : '' }}" href="{{ route('management.reports.index', ['status' => 'completed']) }}">Completed <span class="tab-badge">{{ $statusCounts['completed'] }}</span></a>
+            <a class="tab-button {{ $status === 'all' ? 'is-active' : '' }}" href="{{ route('management.reports.index', ['status' => 'all']) }}">All <span class="tab-badge">{{ $statusCounts['all'] }}</span></a>
         </div>
-    </form>
+    </div>
+</div>
+
+<div class="card-grid" style="margin-bottom: 16px;">
+    <div class="card">
+        <div class="stat-label">Events in View</div>
+        <div class="stat-value">{{ $statusCounts[$status] ?? $statusCounts['all'] }}</div>
+    </div>
+    <div class="card">
+        <div class="stat-label">Active Events</div>
+        <div class="stat-value">{{ $statusCounts['active'] }}</div>
+    </div>
+    <div class="card">
+        <div class="stat-label">Total Sales</div>
+        <div class="stat-value">RM {{ number_format($totalSalesAll, 2) }}</div>
+    </div>
+    <div class="card">
+        <div class="stat-label">Premiums Redeemed</div>
+        <div class="stat-value">{{ number_format($totalPremiumsAll) }}</div>
+    </div>
 </div>
 
 <div class="card">
     <div class="table-responsive">
         <table class="table">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Hour</th>
-                <th>Promoter</th>
-                <th>Location</th>
-                <th>Sales</th>
-                <th>Premiums</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse ($reports as $report)
-                @php
-                    $tier1 = $report->premiums->where('tier', 1)->sum('quantity');
-                    $tier2 = $report->premiums->where('tier', 2)->sum('quantity');
-                @endphp
+            <thead>
                 <tr>
-                    <td>{{ $report->report_date->toDateString() }}</td>
-                    <td>{{ str_pad($report->report_hour, 2, '0', STR_PAD_LEFT) }}:00</td>
-                    <td>{{ $report->promoter?->name }}</td>
-                    <td>{{ $report->location?->name }}</td>
-                    <td>RM {{ number_format($report->total_sales_amount, 2) }}</td>
-                    <td>T1 {{ $tier1 }} / T2 {{ $tier2 }}</td>
-                    <td><a href="{{ route('management.reports.show', $report) }}" class="btn btn-ghost">View</a></td>
+                    <th>Event</th>
+                    <th>Location</th>
+                    <th>Dates</th>
+                    <th>Status</th>
+                    <th class="text-right">Sales</th>
+                    <th class="text-right">Engagements</th>
+                    <th class="text-right">Samplings</th>
+                    <th class="text-right">Premiums</th>
+                    <th class="text-right">Reports</th>
+                    <th>Last Submission</th>
+                    <th></th>
                 </tr>
-            @empty
-                <tr>
-                    <td colspan="7" class="muted">No reports found.</td>
-                </tr>
-            @endforelse
-        </tbody>
+            </thead>
+            <tbody>
+                @forelse ($eventSummaries as $summary)
+                    @php
+                        $event = $summary['event'];
+                        $lastReport = $summary['last_report'];
+                    @endphp
+                    <tr>
+                        <td>
+                            <div style="font-weight: 600;">{{ $event->name }}</div>
+                            <div class="text-xs muted">{{ $event->promoters->count() }} promoters • {{ $event->products->count() }} products</div>
+                        </td>
+                        <td>{{ $event->location?->name ?? '-' }}</td>
+                        <td>{{ $event->start_date->format('d M') }} - {{ $event->end_date->format('d M Y') }}</td>
+                        <td>
+                            @php
+                                $statusClass = $summary['status'] === 'upcoming'
+                                    ? 'status-planned'
+                                    : 'status-' . $summary['status'];
+                            @endphp
+                            <span class="status-badge {{ $statusClass }}">
+                                {{ ucfirst($summary['status']) }}
+                            </span>
+                        </td>
+                        <td class="text-right">RM {{ number_format($summary['total_sales'], 2) }}</td>
+                        <td class="text-right">{{ number_format($summary['total_engagements']) }}</td>
+                        <td class="text-right">{{ number_format($summary['total_samplings']) }}</td>
+                        <td class="text-right">{{ number_format($summary['total_premiums']) }}</td>
+                        <td class="text-right">{{ number_format($summary['total_reports']) }}</td>
+                        <td>
+                            @if ($lastReport)
+                                <div class="text-xs">{{ $lastReport->created_at?->format('d M Y') }}</div>
+                                <div class="text-xs muted">{{ $lastReport->created_at?->format('H:i') }}</div>
+                            @else
+                                <span class="muted">-</span>
+                            @endif
+                        </td>
+                        <td><a href="{{ route('management.reports.show', $event) }}" class="btn btn-ghost">View</a></td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="11" class="muted">No events available.</td>
+                    </tr>
+                @endforelse
+            </tbody>
         </table>
     </div>
 </div>
-
-{{ $reports->links() }}
 @endsection

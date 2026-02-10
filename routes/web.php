@@ -68,7 +68,7 @@ Route::middleware(['auth', 'role:promoter'])->prefix('promoter')->name('promoter
 Route::middleware(['auth', 'role:manager'])->prefix('management')->name('management.')->group(function () {
     Route::get('/dashboard', [ManagementDashboardController::class, 'index'])->name('dashboard');
     Route::get('/reports', [ManagementReportController::class, 'index'])->name('reports.index');
-    Route::get('/reports/{report}', [ManagementReportController::class, 'show'])->name('reports.show');
+    Route::get('/reports/{event}', [ManagementReportController::class, 'show'])->name('reports.show');
     Route::get('/promoters', [PromoterManagementController::class, 'index'])->name('promoters.index');
     Route::get('/promoters/create', [PromoterManagementController::class, 'create'])->name('promoters.create');
     Route::post('/promoters', [PromoterManagementController::class, 'store'])->name('promoters.store');
@@ -92,6 +92,7 @@ Route::middleware(['auth', 'role:customer_admin,customer_staff'])->prefix('custo
 
     Route::get('/reports', [CustomerReportController::class, 'index'])->name('reports.index');
     Route::get('/reports/export', [CustomerReportController::class, 'export'])->name('reports.export');
+    Route::get('/reports/export/pdf', [CustomerReportController::class, 'exportPdf'])->name('reports.export.pdf');
     Route::get('/reports/{report}', [CustomerReportController::class, 'show'])->name('reports.show');
 
     Route::get('/assignments', [CustomerAssignmentController::class, 'index'])->name('assignments.index');

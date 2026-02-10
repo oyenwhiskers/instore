@@ -47,11 +47,7 @@ class CustomerKpiProgressController extends Controller
         ];
 
         $reportIds = $reports->pluck('id');
-        $premiumTier1 = PremiumRedemption::whereIn('hourly_report_id', $reportIds)
-            ->where('tier', 1)
-            ->sum('quantity');
-        $premiumTier2 = PremiumRedemption::whereIn('hourly_report_id', $reportIds)
-            ->where('tier', 2)
+        $premiumTotal = PremiumRedemption::whereIn('hourly_report_id', $reportIds)
             ->sum('quantity');
 
         $latestTarget = KpiTarget::where('promoter_user_id', $promoter->id)
@@ -65,8 +61,7 @@ class CustomerKpiProgressController extends Controller
             'startDate' => $startDate,
             'endDate' => $endDate,
             'totals' => $totals,
-            'premiumTier1' => $premiumTier1,
-            'premiumTier2' => $premiumTier2,
+            'premiumTotal' => $premiumTotal,
             'latestTarget' => $latestTarget,
         ]);
     }

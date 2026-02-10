@@ -23,10 +23,6 @@
         </thead>
         <tbody>
             @forelse ($reports as $report)
-                @php
-                    $tier1 = $report->premiums->where('tier', 1)->sum('quantity');
-                    $tier2 = $report->premiums->where('tier', 2)->sum('quantity');
-                @endphp
                 <tr>
                     <td>{{ $report->report_date->toDateString() }}</td>
                     <td>{{ str_pad($report->report_hour, 2, '0', STR_PAD_LEFT) }}:00</td>
@@ -34,7 +30,24 @@
                     <td>{{ number_format($report->total_sales_amount, 2) }}</td>
                     <td>{{ $report->engagements_count }}</td>
                     <td>{{ $report->samplings_count }}</td>
-                    <td>T1 {{ $tier1 }} / T2 {{ $tier2 }}</td>
+                    <td>
+                        @if ($report->premiums->isNotEmpty())
+                            <div style="font-size: 13px;">
+                                @foreach ($report->premiums->groupBy('premium_id') as $premiumId => $items)
+                                    @php
+                                        $premiumName = $items->first()?->premium?->gift_name ?? 'Premium';
+                                        $premiumQty = $items->sum('quantity');
+                                    @endphp
+                                    <div style="margin-bottom: 2px;">
+                                        {{ $premiumName }}:
+                                        <span style="font-weight: 600;">{{ $premiumQty }}</span>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @else
+                            <span class="muted">-</span>
+                        @endif
+                    </td>
                 </tr>
             @empty
                 <tr>

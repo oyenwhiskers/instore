@@ -25,11 +25,7 @@ class ManagementDashboardController extends Controller
             'samplings' => $reportsToday->sum('samplings_count'),
         ];
 
-        $premiumTier1 = PremiumRedemption::whereIn('hourly_report_id', $reportIds)
-            ->where('tier', 1)
-            ->sum('quantity');
-        $premiumTier2 = PremiumRedemption::whereIn('hourly_report_id', $reportIds)
-            ->where('tier', 2)
+        $premiumTotal = PremiumRedemption::whereIn('hourly_report_id', $reportIds)
             ->sum('quantity');
 
         $promoterCount = User::where('role', 'promoter')->count();
@@ -37,8 +33,7 @@ class ManagementDashboardController extends Controller
 
         return view('management.dashboard', [
             'totals' => $totals,
-            'premiumTier1' => $premiumTier1,
-            'premiumTier2' => $premiumTier2,
+            'premiumTotal' => $premiumTotal,
             'promoterCount' => $promoterCount,
             'locationCount' => $locationCount,
         ]);

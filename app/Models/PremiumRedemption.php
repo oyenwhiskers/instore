@@ -11,6 +11,7 @@ class PremiumRedemption extends Model
 
     protected $fillable = [
         'hourly_report_id',
+        'premium_id',
         'tier',
         'quantity',
     ];
@@ -18,5 +19,10 @@ class PremiumRedemption extends Model
     public function report()
     {
         return $this->belongsTo(HourlyReport::class, 'hourly_report_id');
+    }
+
+    public function premium()
+    {
+        return $this->belongsTo(Premium::class);
     }
 }

@@ -213,6 +213,13 @@ class EventController extends Controller
 
         $stockMovements = $stockMovementsQuery->get();
 
+        $eventProducts = $event->products;
+        if ($stockSearch !== '') {
+            $eventProducts = $eventProducts->filter(function ($product) use ($stockSearch) {
+                return stripos($product->name ?? '', $stockSearch) !== false;
+            })->values();
+        }
+
         $stockBalances = $event->products
             ->mapWithKeys(function ($product) use ($stockMovementsAll) {
                 $balance = $stockMovementsAll
@@ -284,10 +291,120 @@ class EventController extends Controller
                 return $items->keyBy('premium_id');
             });
 
+        // Enhanced Overview Analytics
+        $today = Carbon::today();
+        $now = Carbon::now();
+        
+        // Get hourly reports for this event
+        $hourlyReports = \App\Models\HourlyReport::whereIn('promoter_user_id', $event->promoters->pluck('id'))
+            ->where('location_id', $event->location_id)
+            ->whereBetween('report_date', [$event->start_date, $event->end_date])
+            ->with(['promoter', 'items.product', 'premiums.premium'])
+            ->orderByDesc('report_date')
+            ->orderByDesc('report_hour')
+            ->get();
+
+        // Today's reports
+        $todayReports = $hourlyReports->where('report_date', $today);
+        
+        // Actual performance metrics
+        $actualSales = $hourlyReports->sum('total_sales_amount');
+        $actualEngagements = $hourlyReports->sum('engagements_count');
+        $actualSamplings = $hourlyReports->sum('samplings_count');
+        
+        // Today's performance
+        $todaySales = $todayReports->sum('total_sales_amount');
+        $todayEngagements = $todayReports->sum('engagements_count');
+        $todaySamplings = $todayReports->sum('samplings_count');
+        
+        // Hourly breakdown for today
+        $hourlyBreakdown = $todayReports->groupBy('report_hour')->map(function ($reports) {
+            return [
+                'sales' => $reports->sum('total_sales_amount'),
+                'engagements' => $reports->sum('engagements_count'),
+                'samplings' => $reports->sum('samplings_count'),
+            ];
+        })->sortKeys();
+        
+        // Product performance
+        $productSales = $hourlyReports->flatMap(fn($r) => $r->items)
+            ->groupBy('product_id')
+            ->map(function ($items) {
+                return [
+                    'product' => $items->first()?->product,
+                    'quantity' => $items->sum('quantity_sold'),
+                ];
+            })
+            ->sortByDesc('quantity')
+            ->values();
+        
+        // Premium redemptions
+        $premiumRedemptions = $hourlyReports->flatMap(fn($r) => $r->premiums)
+            ->filter(fn($premium) => $premium->premium)
+            ->groupBy('premium_id')
+            ->map(function ($items) {
+                return [
+                    'premium' => $items->first()?->premium,
+                    'quantity' => $items->sum('quantity'),
+                ];
+            })
+            ->sortByDesc('quantity')
+            ->values();
+        
+        // Promoter performance
+        $promoterPerformance = $hourlyReports->groupBy('promoter_user_id')->map(function ($reports, $promoterId) use ($promoterKpis) {
+            $kpi = $promoterKpis->get($promoterId);
+            $sales = $reports->sum('total_sales_amount');
+            $engagements = $reports->sum('engagements_count');
+            $samplings = $reports->sum('samplings_count');
+            
+            return [
+                'promoter' => $reports->first()?->promoter,
+                'sales' => $sales,
+                'engagements' => $engagements,
+                'samplings' => $samplings,
+                'sales_target' => $kpi?->target_sales_amount ?? 0,
+                'engagements_target' => $kpi?->target_engagements ?? 0,
+                'samplings_target' => $kpi?->target_samplings ?? 0,
+                'sales_progress' => $kpi?->target_sales_amount > 0 ? ($sales / $kpi->target_sales_amount * 100) : 0,
+                'engagements_progress' => $kpi?->target_engagements > 0 ? ($engagements / $kpi->target_engagements * 100) : 0,
+                'samplings_progress' => $kpi?->target_samplings > 0 ? ($samplings / $kpi->target_samplings * 100) : 0,
+                'report_count' => $reports->count(),
+                'last_report' => $reports->sortByDesc('report_date')->sortByDesc('report_hour')->first(),
+            ];
+        })->sortByDesc('sales');
+        
+        // Current shift status
+        $currentHour = (int) $now->format('H');
+        $expectedReports = $event->promoters->count();
+        $currentHourReports = $todayReports->where('report_hour', $currentHour)->count();
+        
+        // Peak performance analysis
+        $peakHour = $hourlyBreakdown->sortByDesc('sales')->keys()->first();
+        $peakSales = $hourlyBreakdown->get($peakHour)['sales'] ?? 0;
+
+        // Submissions filtering
+        $submissionPromoter = request()->input('submission_promoter');
+        $submissionDate = request()->input('submission_date');
+        
+        $filteredSubmissions = $hourlyReports;
+        
+        if ($submissionPromoter) {
+            $filteredSubmissions = $filteredSubmissions->where('promoter_user_id', $submissionPromoter);
+        }
+        
+        if ($submissionDate) {
+            $filterDate = Carbon::parse($submissionDate)->toDateString();
+            $filteredSubmissions = $filteredSubmissions->filter(function ($report) use ($filterDate) {
+                return $report->report_date?->toDateString() === $filterDate;
+            });
+        }
+
         return view('customer.events.show', [
             'event' => $event,
             'stockMovements' => $stockMovements,
             'stockBalances' => $stockBalances,
+            'eventProducts' => $eventProducts,
             'stockFilters' => [
                 'search' => $stockSearch,
                 'type' => $stockType,
@@ -303,6 +420,29 @@ class EventController extends Controller
             ],
             'promoterKpis' => $promoterKpis,
             'premiumTargets' => $premiumTargets,
+            // Overview analytics
+            'hourlyReports' => $hourlyReports,
+            'todayReports' => $todayReports,
+            'actualSales' => $actualSales,
+            'actualEngagements' => $actualEngagements,
+            'actualSamplings' => $actualSamplings,
+            'todaySales' => $todaySales,
+            'todayEngagements' => $todayEngagements,
+            'todaySamplings' => $todaySamplings,
+            'hourlyBreakdown' => $hourlyBreakdown,
+            'productSales' => $productSales,
+            'premiumRedemptions' => $premiumRedemptions,
+            'promoterPerformance' => $promoterPerformance,
+            'currentHourReports' => $currentHourReports,
+            'expectedReports' => $expectedReports,
+            'peakHour' => $peakHour,
+            'peakSales' => $peakSales,
+            // Submissions
+            'filteredSubmissions' => $filteredSubmissions,
+            'submissionFilters' => [
+                'promoter' => $submissionPromoter,
+                'date' => $submissionDate,
+            ],
         ]);
     }
 

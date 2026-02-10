@@ -137,5 +137,9 @@ class DatabaseSeeder extends Seeder
                 $index++;
             }
         }
+
+        // Seed demo events, premiums, and assignments before hourly reports
+        $this->call(EventDemoSeeder::class);
+        $this->call(HourlyReportSeeder::class);
     }
 }

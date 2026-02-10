@@ -300,6 +300,19 @@ const initTabs = () => {
 			panels.forEach((panel) => {
 				panel.classList.toggle('is-hidden', panel.dataset.tabPanel !== target);
 			});
+
+			if (groupId) {
+				document.querySelectorAll(`[data-tab-store="${groupId}"]`).forEach((input) => {
+					input.value = target;
+				});
+			}
+
+			if (groupId === 'product-views') {
+				const actions = group.closest('.filters-actions');
+				if (actions) {
+					actions.classList.toggle('is-manage', target === 'manage');
+				}
+			}
 		};
 
 		buttons.forEach((button) => {
@@ -318,17 +331,73 @@ const initAutoFilters = () => {
 	}
 
 	forms.forEach((form) => {
+		const submitAjax = () => {
+			if (form.dataset.loading === 'true') {
+				return;
+			}
+
+			const targetSelector = form.dataset.filterTarget;
+			if (!targetSelector) {
+				if (typeof form.requestSubmit === 'function') {
+					form.requestSubmit();
+					return;
+				}
+				form.submit();
+				return;
+			}
+
+			const url = new URL(form.action, window.location.origin);
+			const formData = new FormData(form);
+			formData.forEach((value, key) => {
+				if (value === null || value === '') {
+					url.searchParams.delete(key);
+					return;
+				}
+				url.searchParams.set(key, value);
+			});
+
+			form.dataset.loading = 'true';
+			fetch(url.toString(), {
+				headers: {
+					'X-Requested-With': 'XMLHttpRequest',
+				},
+			})
+				.then((response) => response.text())
+				.then((html) => {
+					const doc = new DOMParser().parseFromString(html, 'text/html');
+					const nextTarget = doc.querySelector(targetSelector);
+					const currentTarget = document.querySelector(targetSelector);
+					if (nextTarget && currentTarget) {
+						currentTarget.outerHTML = nextTarget.outerHTML;
+					}
+					window.history.replaceState({}, '', url);
+					initTabs();
+					initAutoFilters();
+				})
+				.catch(() => {
+					if (typeof form.requestSubmit === 'function') {
+						form.requestSubmit();
+						return;
+					}
+					form.submit();
+				})
+				.finally(() => {
+					form.dataset.loading = 'false';
+				});
+		};
+
 		let timerId;
 		const submitForm = () => {
 			if (timerId) {
 				clearTimeout(timerId);
 			}
-			if (typeof form.requestSubmit === 'function') {
-				form.requestSubmit();
-				return;
-			}
-			form.submit();
+			submitAjax();
 		};
+
+		form.addEventListener('submit', (event) => {
+			event.preventDefault();
+			submitAjax();
+		});
 
 		form.querySelectorAll('input, select').forEach((field) => {
 			const tag = field.tagName.toLowerCase();
@@ -350,6 +419,85 @@ const initAutoFilters = () => {
 	});
 };
 
+const initKpiEditing = () => {
+	document.addEventListener('click', (event) => {
+		const target = event.target;
+		if (!(target instanceof Element)) {
+			return;
+		}
+
+		const editBtn = target.closest('[data-kpi-edit]');
+		const cancelBtn = target.closest('[data-kpi-cancel]');
+
+		if (editBtn) {
+			const row = editBtn.closest('[data-kpi-row]');
+			if (!row) {
+				return;
+			}
+
+			const cells = row.querySelectorAll('[data-kpi-cell]');
+			const cancel = row.querySelector('[data-kpi-cancel]');
+
+			// Switch to edit mode: hide spans, show inputs
+			cells.forEach((cell) => {
+				const viewSpan = cell.querySelector('[data-kpi-view]');
+				const input = cell.querySelector('[data-kpi-input]');
+				
+				if (viewSpan && input) {
+					// Store original value
+					input.dataset.originalValue = input.value;
+					
+					// Toggle visibility
+					viewSpan.style.display = 'none';
+					input.style.display = 'block';
+					input.focus();
+				}
+			});
+
+			// Toggle buttons
+			editBtn.style.display = 'none';
+			if (cancel) {
+				cancel.style.display = 'inline-block';
+			}
+		}
+
+		if (cancelBtn) {
+			const row = cancelBtn.closest('[data-kpi-row]');
+			if (!row) {
+				return;
+			}
+
+			const cells = row.querySelectorAll('[data-kpi-cell]');
+			const edit = row.querySelector('[data-kpi-edit]');
+
+			// Switch to view mode: show spans, hide inputs, restore values
+			cells.forEach((cell) => {
+				const viewSpan = cell.querySelector('[data-kpi-view]');
+				const input = cell.querySelector('[data-kpi-input]');
+				
+				if (viewSpan && input) {
+					// Restore original value
+					if (input.dataset.originalValue !== undefined) {
+						input.value = input.dataset.originalValue;
+						viewSpan.textContent = input.dataset.originalValue || '-';
+						delete input.dataset.originalValue;
+					}
+					
+					// Toggle visibility
+					viewSpan.style.display = 'block';
+					input.style.display = 'none';
+				}
+			});
+
+			// Toggle buttons
+			cancelBtn.style.display = 'none';
+			if (edit) {
+				edit.style.display = 'inline-block';
+			}
+		}
+	});
+};
+
 window.__initLocationMap = initLocationMap;
 if (window.__mapsReady) {
 	window.__initLocationMap();
@@ -361,4 +509,5 @@ document.addEventListener('DOMContentLoaded', () => {
 	}
 	initTabs();
 	initAutoFilters();
+	initKpiEditing();
 });

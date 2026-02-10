@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Promoter;
 
 use App\Http\Controllers\Controller;
+use App\Models\Event;
+use App\Models\EventStockMovement;
 use App\Models\HourlyReport;
 use App\Models\HourlyReportItem;
 use App\Models\PremiumRedemption;
@@ -27,10 +29,23 @@ class HourlyReportController extends Controller
             $products = Product::where('is_active', true)->orderBy('name')->get();
         }
 
+        $event = null;
+        if ($assignment?->location_id) {
+            $event = Event::where('location_id', $assignment->location_id)
+                ->whereDate('start_date', '<=', now())
+                ->whereDate('end_date', '>=', now())
+                ->with('premiums')
+                ->orderByDesc('start_date')
+                ->first();
+        }
+
+        $eventPremiums = $event?->premiums ?? collect();
+
         return view('promoter.report-create', [
             'products' => $products,
             'profile' => $profile,
             'assignment' => $assignment,
+            'eventPremiums' => $eventPremiums,
         ]);
     }
 
@@ -46,8 +61,8 @@ class HourlyReportController extends Controller
             'samplings_count' => ['required', 'integer', 'min:0'],
             'items' => ['array'],
             'items.*' => ['nullable', 'integer', 'min:0'],
-            'premium_tier1_qty' => ['nullable', 'integer', 'min:0'],
-            'premium_tier2_qty' => ['nullable', 'integer', 'min:0'],
+            'premiums' => ['array'],
+            'premiums.*' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $assignment = PromoterAssignment::where('user_id', $user->id)->first();
@@ -70,30 +85,24 @@ class HourlyReportController extends Controller
             ])->withInput();
         }
 
-        $tier1Qty = (int) ($data['premium_tier1_qty'] ?? 0);
-        $tier2Qty = (int) ($data['premium_tier2_qty'] ?? 0);
-
-        if ($tier1Qty > 0 && $data['total_sales_amount'] < 10) {
-            return back()->withErrors([
-                'premium_tier1_qty' => 'Tier 1 premium requires sales of at least RM10.',
-            ])->withInput();
-        }
-
-        if ($tier2Qty > 0 && $data['total_sales_amount'] < 15) {
-            return back()->withErrors([
-                'premium_tier2_qty' => 'Tier 2 premium requires sales of at least RM15.',
-            ])->withInput();
-        }
+        $reportDate = Carbon::parse($data['report_date'])->toDateString();
 
         $report = HourlyReport::create([
             'promoter_user_id' => $user->id,
             'location_id' => $locationId,
-            'report_date' => Carbon::parse($data['report_date'])->toDateString(),
+            'report_date' => $reportDate,
             'report_hour' => $data['report_hour'],
             'total_sales_amount' => $data['total_sales_amount'],
             'engagements_count' => $data['engagements_count'],
             'samplings_count' => $data['samplings_count'],
         ]);
+
+        $event = Event::where('location_id', $locationId)
+            ->whereDate('start_date', '<=', $reportDate)
+            ->whereDate('end_date', '>=', $reportDate)
+            ->with(['products', 'premiums'])
+            ->orderByDesc('start_date')
+            ->first();
 
         foreach ($data['items'] ?? [] as $productId => $quantity) {
             $quantity = (int) $quantity;
@@ -103,22 +112,36 @@ class HourlyReportController extends Controller
                     'product_id' => $productId,
                     'quantity_sold' => $quantity,
                 ]);
+
+                if ($event && $event->products->contains('id', (int) $productId)) {
+                    EventStockMovement::create([
+                        'event_id' => $event->id,
+                        'product_id' => (int) $productId,
+                        'movement_type' => 'out',
+                        'quantity' => $quantity,
+                        'notes' => 'Stock out: ' . $user->name . ' sold ' . $quantity,
+                        'created_by' => $user->id,
+                    ]);
+                }
             }
         }
 
-        if ($tier1Qty > 0) {
-            PremiumRedemption::create([
-                'hourly_report_id' => $report->id,
-                'tier' => 1,
-                'quantity' => $tier1Qty,
-            ]);
-        }
+        $allowedPremiumIds = $event?->premiums->pluck('id')->all() ?? [];
+        foreach ($data['premiums'] ?? [] as $premiumId => $quantity) {
+            $quantity = (int) $quantity;
+            if ($quantity <= 0) {
+                continue;
+            }
 
-        if ($tier2Qty > 0) {
+            if (!in_array((int) $premiumId, $allowedPremiumIds, true)) {
+                continue;
+            }
+
             PremiumRedemption::create([
                 'hourly_report_id' => $report->id,
-                'tier' => 2,
-                'quantity' => $tier2Qty,
+                'premium_id' => (int) $premiumId,
+                'tier' => 1,
+                'quantity' => $quantity,
             ]);
         }
 
@@ -128,7 +151,7 @@ class HourlyReportController extends Controller
     public function history(Request $request): View
     {
         $reports = HourlyReport::where('promoter_user_id', $request->user()->id)
-            ->with(['location', 'items.product', 'premiums'])
+            ->with(['location', 'items.product', 'premiums.premium'])
             ->orderByDesc('report_date')
             ->orderByDesc('report_hour')
             ->paginate(20);

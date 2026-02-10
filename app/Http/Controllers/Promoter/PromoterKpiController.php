@@ -28,11 +28,7 @@ class PromoterKpiController extends Controller
         ];
 
         $reportIds = $reportsToday->pluck('id');
-        $premiumTier1 = PremiumRedemption::whereIn('hourly_report_id', $reportIds)
-            ->where('tier', 1)
-            ->sum('quantity');
-        $premiumTier2 = PremiumRedemption::whereIn('hourly_report_id', $reportIds)
-            ->where('tier', 2)
+        $premiumTotal = PremiumRedemption::whereIn('hourly_report_id', $reportIds)
             ->sum('quantity');
 
         $latestTarget = KpiTarget::where('promoter_user_id', $user->id)
@@ -42,8 +38,7 @@ class PromoterKpiController extends Controller
         return view('promoter.kpi', [
             'user' => $user,
             'totals' => $totals,
-            'premiumTier1' => $premiumTier1,
-            'premiumTier2' => $premiumTier2,
+            'premiumTotal' => $premiumTotal,
             'latestTarget' => $latestTarget,
         ]);
     }

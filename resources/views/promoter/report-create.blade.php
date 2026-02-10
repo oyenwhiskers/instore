@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('page_title', 'Submit Hourly Report')
-@section('page_desc', 'Capture your field activity with validated sales and premium tiers.')
+@section('page_desc', 'Capture your field activity with validated sales and event premiums.')
 @section('page_actions')
     <a href="{{ route('promoter.reports.history') }}" class="btn btn-secondary">View History</a>
 @endsection
@@ -80,16 +80,18 @@
 
         <div class="form-section">
             <div class="stat-label">Premium Redemptions</div>
-            <div class="form-grid">
-                <div class="form-group">
-                    <label>Tier 1 Quantity (>= RM10)</label>
-                    <input type="number" min="0" name="premium_tier1_qty" value="{{ old('premium_tier1_qty', 0) }}" class="input">
+            @if ($eventPremiums->isNotEmpty())
+                <div class="form-grid">
+                    @foreach ($eventPremiums as $premium)
+                        <div class="form-group">
+                            <label>{{ $premium->gift_name }}</label>
+                            <input type="number" min="0" name="premiums[{{ $premium->id }}]" value="{{ old('premiums.' . $premium->id, 0) }}" class="input">
+                        </div>
+                    @endforeach
                 </div>
-                <div class="form-group">
-                    <label>Tier 2 Quantity (>= RM15)</label>
-                    <input type="number" min="0" name="premium_tier2_qty" value="{{ old('premium_tier2_qty', 0) }}" class="input">
-                </div>
-            </div>
+            @else
+                <p class="muted text-sm">No premiums linked to this event.</p>
+            @endif
         </div>
 
         <button class="btn btn-primary" type="submit">Submit Report</button>
